@@ -1,6 +1,6 @@
 from pathlib import Path
-import yaml
 
+import yaml
 
 DEFAULT_CONFIG = {
     "ttl_seconds": 300,
@@ -11,7 +11,7 @@ DEFAULT_CONFIG = {
 
 
 def load_config(path="devdb.yaml"):
-    config= DEFAULT_CONFIG.copy()
+    config = DEFAULT_CONFIG.copy()
     config_file = Path(path)
 
     if config_file.exists():
@@ -20,4 +20,3 @@ def load_config(path="devdb.yaml"):
             config.update(user_config)
 
     return config
-
