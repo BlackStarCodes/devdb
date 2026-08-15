@@ -9,5 +9,5 @@ repos:
     rev: v2.3.1
     hooks:
       - id: mypy
-        additonal_dependencies: [typer, pyyaml]
+        additional_dependencies: [typer, pyyaml]
         args: [--ignore-missing-imports]        

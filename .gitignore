@@ -1,10 +1,33 @@
-# Python-generated files
+# Python
 __pycache__/
-*.py[oc]
-build/
+*.pyc
+*.pyo
+*.so
+.Python
+*.egg-info/
 dist/
-wheels/
-*.egg-info
+build/
+*.whl
 
 # Virtual environments
-.venv
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Cache and logs
+.mypy_cache/
+.ruff_cache/
+*.log
+
+# Config (user-specific, never commit)
+devdb.yaml
+.env
+
+# OS
+.DS_Store
+EOF

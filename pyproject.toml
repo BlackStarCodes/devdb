@@ -1,7 +1,7 @@
 [project]
 name = "devdb"
 version = "0.1.0"
-description = "Add your description here"
+description = "Instant isolated Postgres test databases for developers"
 readme = "README.md"
 authors = [
     { name = "BlackStarCodes", email = "301748195+BlackStarCodes@users.noreply.github.com" }
