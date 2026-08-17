@@ -1,6 +1,10 @@
+import csv
+import subprocess
 import time
+from pathlib import Path
 
 import typer
+import yaml
 
 from devdb.config import load_config
 from devdb.container import cleanup_container, create_postgres_container
@@ -84,9 +88,6 @@ def start():
 @app.command()
 def init():
     """Generate a devdb.yaml configuration file in the current directory."""
-    from pathlib import Path
-
-    import yaml
 
     config_path = Path("devdb.yaml")
 
@@ -115,6 +116,117 @@ def init():
     config_path.write_text(commented_content)
     print(f"✅ Created {config_path}")
     print("💡 Edit this file to customize your DevDB environment.")
+
+
+@app.command()
+def seed(
+    file: str | None = typer.Option(
+        None, "--file", "-f", help="Path to SQL or CSV file"
+    ),
+    table: str | None = typer.Option(
+        None, "--table", "-t", help="Target table name (required for CSV)"
+    ),
+):
+
+    config = load_config()
+    seed_file = file or config.get("seed_file")
+    seed_table = table or config.get("seed_table")
+
+    if not seed_file:
+        print(
+            "❌ No seed file specified. Provide --file or set seed_file in devdb.yaml"
+        )
+        raise typer.Exit(code=1)
+
+    seed_path = Path(seed_file).expanduser().resolve()
+    if not seed_path.exists():
+        print(f"❌ Seed file not found: {seed_path}")
+        raise typer.Exit(code=1)
+
+    from devdb.container import get_container_name
+
+    container_name = get_container_name()
+
+    check = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Status}}", container_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if check.returncode != 0 or check.stdout.strip() != "running":
+        print(
+            f"❌ '{container_name}' is not running. Start it with 'devdb start' first!"
+        )
+        raise typer.Exit(code=1)
+
+    suffix = seed_path.suffix.lower()
+    if suffix == ".sql":
+        print(f"📥 Loading SQL seed: {seed_path}")
+        with open(seed_path, "rb") as f:
+            proc = subprocess.Popen(
+                [
+                    "docker",
+                    "exec",
+                    "-i",
+                    container_name,
+                    "psql",
+                    "-U",
+                    "devdb",
+                    "-d",
+                    "devdb",
+                ],
+                stdin=f,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            _, stderr = proc.communicate()
+            if proc.returncode != 0:
+                print(f"❌ SQL seeding failed: {stderr.decode()}")
+                raise typer.Exit(code=1)
+        print("✅ SQL seed loaded successfully.")
+
+    elif suffix == ".csv":
+        if not seed_table:
+            print("❌ CSV seeding requires --table or seed_table in config.")
+            raise typer.Exit(code=1)
+
+        print(f"📥 Loading CSV seed: {seed_path} into table '{seed_table}'")
+        try:
+            with open(seed_path, "r") as f:
+                reader = csv.reader(f)
+                header = next(reader)
+        except StopIteration:
+            print("❌ CSV file is empty")
+            raise typer.Exit(code=1)
+        columns = ", ".join(header)
+        copy_cmd = f"COPY {seed_table} ({columns}) FROM STDIN CSV HEADER;"
+
+        cmd = [
+            "docker",
+            "exec",
+            "-i",
+            container_name,
+            "psql",
+            "-U",
+            "devdb",
+            "-d",
+            "devdb",
+            "-c",
+            copy_cmd,
+        ]
+
+        with open(seed_path, "rb") as f:
+            proc = subprocess.Popen(
+                cmd, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            _, stderr = proc.communicate()
+            if proc.returncode != 0:
+                print(f"❌ CSV seeding failed: {stderr.decode()}")
+                raise typer.Exit(code=1)
+        print("✅ CSV seed loaded successfully.")
+    else:
+        print(f"❌ Unsupported file type: {suffix}. Use .sql or .csv file.")
+        raise typer.Exit(code=1)
 
 
 @app.command()
