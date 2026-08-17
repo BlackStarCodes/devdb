@@ -125,8 +125,8 @@ The integration tests run in isolated temporary directories, so they never inter
 | Unit tests (config + utilities) | ✅ Complete |
 | Integration tests (`devdb start`) | ✅ Complete |
 | Error path tests (Docker down) | ✅ Complete |
-| `devdb init` (config generator) | ⏳ Planned |
-| `devdb seed` (SQL/CSV loading) | ⏳ Planned |
+| `devdb init` (config generator) | ✅ Complete |
+| `devdb seed` (SQL/CSV loading) | ✅ Complete |
 | CI Pipeline (GitHub Actions) | ⏳ Planned |
 | `devdb status` – check container state | ⏳ Planned |
 | `devdb test` – run tests with DB lifecycle | ⏳ Planned |
@@ -141,17 +141,19 @@ I use a `src/` layout to prevent import issues when running tests.
 devdb/
 ├── src/
 │ └── devdb/
-│       ├── init.py
+│       ├── __init__.py
 │       ├── cli.py
 │       ├── container.py
 │       └── config.py
 ├── tests/
 │   ├── unit/
-│   │ ├── test_config.py
-│   │ └── test_container_utils.py
+│   │ ├── config_test.py
+│   │ └── container_utils_test.py
 │   └── integration/
-│       ├── test_start.py
-│       └── test_errors.py
+│       ├── start_test.py
+│       └── errors_test.py
+│       └── init_test.py
+│       └── seed_test.py
 ├── docs/
 │ └── ARCHITECTURE.md
 ├── pyproject.toml

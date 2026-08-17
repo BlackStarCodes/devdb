@@ -55,6 +55,8 @@ The TTL clock starts the moment `docker run` is called – not after Postgres is
 | Command | Description |
 | :--- | :--- |
 | `devdb start` | Start a fresh Postgres container. |
+| `devdb init` | Generate a `devdb.yaml` config file. |
+| `devdb seed` | Load SQL or CSV data into the running container. |
 | `devdb --version` | Show the version. |
 | `devdb --help` | Show help. |
 
@@ -62,8 +64,6 @@ The TTL clock starts the moment `docker run` is called – not after Postgres is
 
 | Command | Description |
 | :--- | :--- |
-| `devdb init` | Generate a `devdb.yaml` config file. |
-| `devdb seed` | Load SQL or CSV data into the running container. |
 | `devdb status` | Show the current container state (running/port/TTL). |
 | `devdb test -- pytest tests/` | Start DB, run a command, destroy DB after. |
 
