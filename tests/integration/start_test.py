@@ -1,9 +1,10 @@
-import pytest
-import time
-import subprocess
-import signal
 import os
+import signal
+import subprocess
+import time
+
 import psycopg2
+import pytest
 
 
 def test_devdb_start_and_connect(devdb_start):
@@ -23,7 +24,7 @@ def test_devdb_start_and_connect(devdb_start):
         conn.close()
         connected = True
         print("✅ psycopg2 connection succeeded")
-    except Exception as e:
+    except psycopg2.OperationalError as e:
         print(f"⚠️ psycopg2 connection failed: {e} (fallback to docker exec)")
 
     # Fallback to docker exec if needed
@@ -33,10 +34,20 @@ def test_devdb_start_and_connect(devdb_start):
 
         for attempt in range(5):
             cmd = [
-                "docker", "exec", "-e", f"PGPASSWORD={password}",
+                "docker",
+                "exec",
+                "-e",
+                f"PGPASSWORD={password}",
                 container_name,
-                "psql", "-h", "127.0.0.1", "-U", "devdb", "-d", "devdb",
-                "-c", "SELECT 1"
+                "psql",
+                "-h",
+                "127.0.0.1",
+                "-U",
+                "devdb",
+                "-d",
+                "devdb",
+                "-c",
+                "SELECT 1",
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if result.returncode == 0:
@@ -49,7 +60,9 @@ def test_devdb_start_and_connect(devdb_start):
     # Verify container is running
     result = subprocess.run(
         ["docker", "ps", "--filter", f"name={container_name}"],
-        capture_output=True, text=True
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert container_name in result.stdout
 
@@ -74,6 +87,7 @@ def test_devdb_ttl_cleanup(test_project_dir):
     config_path.write_text("ttl_seconds: 3")
 
     from devdb.container import get_container_name
+
     container_name = get_container_name()
 
     env = os.environ.copy()
@@ -91,7 +105,9 @@ def test_devdb_ttl_cleanup(test_project_dir):
         time.sleep(10)
         result = subprocess.run(
             ["docker", "ps", "-a", "--filter", f"name={container_name}"],
-            capture_output=True, text=True
+            capture_output=True,
+            text=True,
+            check=False,
         )
         assert container_name not in result.stdout
 
@@ -104,4 +120,9 @@ def test_devdb_ttl_cleanup(test_project_dir):
                 proc.kill()
                 proc.wait()
 
-        subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, text=True, check=False)
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )

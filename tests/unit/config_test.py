@@ -44,10 +44,10 @@ seed_file: custom.sql
 
 def test_load_config_malformed_yaml(test_project_dir):
     """Test that malformed YAML raises an exception."""
-    import yaml
 
     config_path = Path("devdb.yaml")
     config_path.write_text("invalid: [yaml")
 
-    with pytest.raises(yaml.YAMLError):
+    with pytest.raises(RuntimeError) as excinfo:
         load_config()
+    assert "Failed to parse" in str(excinfo.value)

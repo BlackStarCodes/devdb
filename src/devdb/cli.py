@@ -18,7 +18,7 @@ def main():
 @app.command()
 def start():
     """Start a new isolated Postgres test database.
-    
+
     The container will auto-cleanup after the TTL expires or when you press Ctrl+C.
     """
 
@@ -79,6 +79,42 @@ def start():
             raise typer.Exit(code=1)
         print("\n✅ DevDB shutdown complete! (interrupted by user)")
         raise typer.Exit(code=0)
+
+
+@app.command()
+def init():
+    """Generate a devdb.yaml configuration file in the current directory."""
+    from pathlib import Path
+
+    import yaml
+
+    config_path = Path("devdb.yaml")
+
+    if config_path.exists():
+        print("⚠️  devdb.yaml already exists! Remove it to regenerate.")
+        raise typer.Exit(code=1)
+
+    template = {
+        "ttl_seconds": 300,
+        "migrations_path": None,
+        "seed_file": None,
+        "seed_table": None,
+    }
+
+    yaml_content = yaml.dump(template, default_flow_style=False, sort_keys=False)
+    commented_content = (
+        "# DevDB Configuration\n"
+        "# -------------------\n"
+        "# ttl_seconds: How long the container should live (in seconds).\n"
+        "# migrations_path: Path to your Alembic migrations folder (optional).\n"
+        "# seed_file: Path to a .sql or .csv file to seed the database (optional).\n"
+        "# seed_table: Required only if seed_file is a .csv (specifies the target table).\n\n"
+        + yaml_content
+    )
+
+    config_path.write_text(commented_content)
+    print(f"✅ Created {config_path}")
+    print("💡 Edit this file to customize your DevDB environment.")
 
 
 @app.command()
