@@ -15,8 +15,10 @@ def load_config(path="devdb.yaml"):
     config_file = Path(path)
 
     if config_file.exists():
-        with open(config_file, "r") as f:
-            user_config = yaml.safe_load(f) or {}
-            config.update(user_config)
-
+        try:
+            with open(config_file, "r") as f:
+                user_config = yaml.safe_load(f) or {}
+                config.update(user_config)
+        except yaml.YAMLError as e:
+            raise RuntimeError(f"Failed to parse {path}: {e}")
     return config

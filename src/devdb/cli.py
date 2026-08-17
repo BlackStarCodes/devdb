@@ -5,6 +5,8 @@ import typer
 from devdb.config import load_config
 from devdb.container import cleanup_container, create_postgres_container
 
+__version__ = "0.1.0"
+
 app = typer.Typer(help="DevDB - Instant Isolated Postgres Test Databases")
 
 
@@ -15,7 +17,10 @@ def main():
 
 @app.command()
 def start():
-    """Start a new isolated Postgres test database."""
+    """Start a new isolated Postgres test database.
+    
+    The container will auto-cleanup after the TTL expires or when you press Ctrl+C.
+    """
 
     config = load_config()
     ttl = config.get("ttl_seconds", 300)
@@ -74,6 +79,13 @@ def start():
             raise typer.Exit(code=1)
         print("\n✅ DevDB shutdown complete! (interrupted by user)")
         raise typer.Exit(code=0)
+
+
+@app.command()
+def version():
+    """Show the version and exit."""
+    print(f"DevDB version {__version__}")
+    raise typer.Exit(code=0)
 
 
 if __name__ == "__main__":
