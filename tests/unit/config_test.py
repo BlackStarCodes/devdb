@@ -5,7 +5,7 @@ import pytest
 from devdb.config import load_config
 
 
-def test_load_config_defaults(temp_project_dir):
+def test_load_config_defaults(test_project_dir):
     """Test that config returns defaults when no devdb.yaml exists."""
     config = load_config()
     assert config["ttl_seconds"] == 300
@@ -14,7 +14,7 @@ def test_load_config_defaults(temp_project_dir):
     assert config["seed_table"] is None
 
 
-def test_load_config_with_user_values(temp_project_dir):
+def test_load_config_with_user_values(test_project_dir):
     """Test that user values override defaults."""
     config_path = Path("devdb.yaml")
     config_path.write_text("""
@@ -30,7 +30,7 @@ seed_table: users
     assert config["migrations_path"] is None
 
 
-def test_load_config_partial_override(temp_project_dir):
+def test_load_config_partial_override(test_project_dir):
     """Test that partial YAML only overrides specified fields."""
     config_path = Path("devdb.yaml")
     config_path.write_text("""
@@ -42,7 +42,7 @@ seed_file: custom.sql
     assert config["seed_table"] is None
 
 
-def test_load_config_malformed_yaml(temp_project_dir):
+def test_load_config_malformed_yaml(test_project_dir):
     """Test that malformed YAML raises an exception."""
     import yaml
 
