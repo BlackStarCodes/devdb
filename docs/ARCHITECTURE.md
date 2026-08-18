@@ -38,6 +38,12 @@ I kept the stack boring and reliable:
 - Loads `devdb.yaml` from the current working directory.
 - Falls back to sensible defaults (`ttl_seconds: 300`) if the file is missing.
 
+### `devdb test` – CI/CD Integration
+- Starts a Postgres container, sets `DATABASE_URL` in the environment, runs the user’s command (e.g., `pytest`), and destroys the container on completion (even if the command fails).
+- The container uses a long TTL (3600s) to outlast any test suite.
+- Supports an optional `--migrations` flag to apply a `.sql` schema before running the command.
+- Exit codes are propagated, making it safe for CI pipelines.
+
 ---
 
 ## Lifecycle Flow (TTL & Cleanup)
@@ -82,6 +88,7 @@ DevDB uses deterministic container names based on the current working directory 
 
 However, running `devdb start` simultaneously in **the same directory** introduces a race condition: two processes could try to remove the existing container and start a new one at the same time. This is a known limitation of the current implementation. The tool handles the common case (single user, single terminal) reliably. For concurrent use, a file-based lock or distributed coordination would be required. This is a deliberate trade-off: simplicity for the common case over complexity for the edge case.
 
+---
 ### Failure Handling
 
 The tool handles several failure scenarios:
@@ -107,6 +114,7 @@ We have three layers of tests:
 - **Unit tests** (`tests/unit/`): Fast, no Docker. They test the config loader, random string generator, port finder, and container naming logic.
 - **Integration tests** (`tests/integration/`): Slower, use real Docker. They spin up a container, connect to it, run a query, and verify cleanup works via both Ctrl+C and TTL expiry. These tests use retry loops instead of hardcoded sleeps, so they are not flaky.
 - **Error path tests** (`tests/integration/test_errors.py`): Mock `subprocess.run` to simulate Docker being unavailable, ensuring the tool fails gracefully.
+- **Complex integration tests** (`tests/integration/real_test_usage_test.py`): Simulate real-world workflows: Alembic migrations, `pytest` integration, schema + seed + test pipelines, and failure recovery with container cleanup.
 
 The integration tests run in isolated temporary directories, so they never interfere with each other. Each test gets its own deterministic container name, preventing cross-test contamination.
 
@@ -127,9 +135,10 @@ The integration tests run in isolated temporary directories, so they never inter
 | Error path tests (Docker down) | ✅ Complete |
 | `devdb init` (config generator) | ✅ Complete |
 | `devdb seed` (SQL/CSV loading) | ✅ Complete |
-| CI Pipeline (GitHub Actions) | ⏳ Planned |
+| CI Pipeline (GitHub Actions) | ✅ Complete |
+| `devdb test` – run tests with DB lifecycle | ✅ Complete |
 | `devdb status` – check container state | ⏳ Planned |
-| `devdb test` – run tests with DB lifecycle | ⏳ Planned |
+
 
 ---
 
@@ -147,13 +156,15 @@ devdb/
 │       └── config.py
 ├── tests/
 │   ├── unit/
-│   │ ├── config_test.py
-│   │ └── container_utils_test.py
+│   │    ├── config_test.py
+│   │    └── container_utils_test.py
 │   └── integration/
 │       ├── start_test.py
 │       └── errors_test.py
 │       └── init_test.py
 │       └── seed_test.py
+|       ├── test_test.py
+|       └── real_test_usage_test.py
 ├── docs/
 │ └── ARCHITECTURE.md
 ├── pyproject.toml
@@ -174,4 +185,4 @@ I optimized for three things:
 
 I avoided over-engineering. No ORM, no async, no microservices. Just a CLI tool that orchestrates Docker and gives you a Postgres database on demand.
 
-*Last updated: 17 August 2026*
+*Last updated: 18 August 2026*

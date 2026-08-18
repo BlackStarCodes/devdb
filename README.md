@@ -20,7 +20,7 @@ cd devdb
 # Set up the environment
 uv venv
 source .venv/bin/activate
-uv pip install -e .
+uv sync --dev
 
 # Start a fresh database
 uv run devdb start
@@ -57,6 +57,7 @@ The TTL clock starts the moment `docker run` is called – not after Postgres is
 | `devdb start` | Start a fresh Postgres container. |
 | `devdb init` | Generate a `devdb.yaml` config file. |
 | `devdb seed` | Load SQL or CSV data into the running container. |
+| `devdb test` | Run a command with `DATABASE_URL` set to a fresh container (auto-cleanup). |
 | `devdb --version` | Show the version. |
 | `devdb --help` | Show help. |
 
@@ -65,7 +66,21 @@ The TTL clock starts the moment `docker run` is called – not after Postgres is
 | Command | Description |
 | :--- | :--- |
 | `devdb status` | Show the current container state (running/port/TTL). |
-| `devdb test -- pytest tests/` | Start DB, run a command, destroy DB after. |
+
+---
+
+### Using `devdb test`
+
+Run your test suite with a fresh database automatically:
+
+```bash
+# Run pytest with a temporary database
+devdb test -- pytest tests/
+
+# Apply schema migrations before running tests
+devdb test --migrations schema.sql -- pytest tests
+```
+The container starts, DATABASE_URL is set, your command runs, and the container is destroyed on exit (even if the command fails).
 
 ---
 
@@ -97,8 +112,7 @@ git clone https://github.com/BlackStarCodes/devdb.git
 cd devdb
 uv venv
 source .venv/bin/activate
-uv pip install -e .
-uv sync --dev   # Installs dev dependencies
+uv sync --dev   # Installs package + dev dependencies
 pre-commit install
 ```
 
