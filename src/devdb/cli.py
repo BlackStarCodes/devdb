@@ -1,4 +1,5 @@
 import csv
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -7,7 +8,11 @@ import typer
 import yaml
 
 from devdb.config import load_config
-from devdb.container import cleanup_container, create_postgres_container
+from devdb.container import (
+    cleanup_container,
+    create_postgres_container,
+    get_container_name,
+)
 
 __version__ = "0.1.0"
 
@@ -227,6 +232,104 @@ def seed(
     else:
         print(f"❌ Unsupported file type: {suffix}. Use .sql or .csv file.")
         raise typer.Exit(code=1)
+
+
+@app.command()
+def test(
+    command: list[str] = typer.Argument(  # noqa: B008
+        ...,
+        allow_dash=True,
+        help="Command to run (eg., pytest tests/). Use -- before the command.",
+    ),
+    migrations_path: str | None = typer.Option(
+        None,
+        "--migrations",
+        "-m",
+        help="Path to a .sql schema file to apply before running the command.",
+    ),
+):
+    """
+    Run a command with DATABASE_URL set to a fresh DevDB container.
+
+    Starts a Postgres container, sets DATABASE_URL, runs your command,
+    and destroys the container when the command finishes (even on failure).
+    """
+
+    # 1. Start the container
+    print("🚀 Starting Postgres container for your command...")
+    try:
+        conn_string, _deadline = create_postgres_container(ttl=3600)
+    except RuntimeError as e:
+        print(f"❌ Failed to start container: {e}")
+        raise typer.Exit(code=1)
+
+    # 2. Apply migrations if provided
+    if migrations_path:
+        migration_file = Path(migrations_path).expanduser().resolve()
+        if not migration_file.exists():
+            print(f"❌ Migration file not found: {migration_file}")
+            cleanup_container()
+            raise typer.Exit(code=1)
+
+        print(f"📥 Applying migrations from: {migration_file}")
+        container_name = get_container_name()
+
+        with open(migration_file, "rb") as f:
+            migration_proc = subprocess.Popen(
+                [
+                    "docker",
+                    "exec",
+                    "-i",
+                    container_name,
+                    "psql",
+                    "-U",
+                    "devdb",
+                    "-d",
+                    "devdb",
+                ],
+                stdin=f,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            _, stderr = migration_proc.communicate()
+            if migration_proc.returncode != 0:
+                print(f"❌ Migration failed: {stderr.decode()}")
+                cleanup_container()
+                raise typer.Exit(code=1)
+        print("✅ Migrations applied successfully!")
+
+    # 3. Prepare env and run command
+    env = os.environ.copy()
+    env["DATABASE_URL"] = conn_string
+    print(f"\n🔗 DATABASE_URL={conn_string}")
+    print(f"▶️  Running: {' '.join(command)}")
+
+    child_proc = subprocess.Popen(
+        command,
+        env=env,
+        stdout=None,
+        stderr=None,
+        text=True,
+    )
+
+    try:
+        child_proc.wait()
+        returncode = child_proc.returncode
+    except KeyboardInterrupt:
+        print("\n🛑 Interrupted by the user. Cleaning up...")
+        child_proc.terminate()
+        child_proc.wait()
+        cleanup_container()
+        raise typer.Exit(code=130)
+
+    cleanup_container()
+
+    if returncode != 0:
+        print(f"❌ Command exited with code: {returncode}")
+    else:
+        print("✅ Command completed successfully.")
+    raise typer.Exit(code=returncode)
 
 
 @app.command()
