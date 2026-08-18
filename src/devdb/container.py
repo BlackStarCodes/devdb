@@ -134,6 +134,10 @@ def create_postgres_container(ttl):
             "exec",
             container_name,
             "pg_isready",
+            "-h",
+            "127.0.0.1",
+            "-p",
+            "5432",
             "-U",
             db_user,
             "-d",
@@ -152,7 +156,7 @@ def create_postgres_container(ttl):
         raise RuntimeError("Postgres did not start in time")
 
     conn_string = (
-        f"postgresql://{db_user}:{db_password}@localhost:{host_port}/{db_name}"
+        f"postgresql://{db_user}:{db_password}@127.0.0.1:{host_port}/{db_name}"
     )
 
     # 6. Register cleanup on normal exit
