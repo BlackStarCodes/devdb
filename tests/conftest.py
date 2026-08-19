@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from devdb.container import get_container_name
+
 
 def cleanup_container(container_name):
     """Force remove a container (used in fixtures and finalizers)."""
@@ -42,8 +44,6 @@ def devdb_start(test_project_dir):
         # Write config with long TTL
         config_path = test_project_dir / "devdb.yaml"
         config_path.write_text("ttl_seconds: 60")
-
-        from devdb.container import get_container_name
 
         container_name = get_container_name()
 
@@ -137,3 +137,7 @@ def devdb_start(test_project_dir):
                 text=True,
                 check=False,
             )
+
+
+def devdb_cmd(*args: str) -> list[str]:
+    return ["uv", "run", "devdb", *args]

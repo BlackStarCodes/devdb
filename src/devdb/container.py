@@ -39,7 +39,7 @@ def cleanup_container():
     )
 
     if inspect.returncode == 0:
-        print(f"\n 🧹 Cleaning up container: {_container_name}")
+        print(f"\n🧹 Cleaning up container: {_container_name}")
         stop = subprocess.run(
             ["docker", "stop", _container_name],
             capture_output=True,
@@ -182,6 +182,78 @@ def create_postgres_container(ttl):
         # 6. Output the connection string, deadline
         atexit.register(cleanup_container)
         return conn_string, deadline
+
+
+def get_container_state(container_name: str) -> str | None:
+    """Return the container's state or None if it doesn't exist."""
+
+    status_cmd = ["docker", "inspect", "-f", "{{.State.Status}}", container_name]
+    status_result = subprocess.run(
+        status_cmd, capture_output=True, text=True, check=False
+    )
+    state = status_result.stdout.strip()
+
+    if status_result.returncode != 0:
+        return None
+    return state
+
+
+def get_container_port(container_name: str) -> str | None:
+    """Return the host port or None if not found."""
+
+    port_result = subprocess.run(
+        ["docker", "port", container_name, "5432"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    port = port_result.stdout.strip().split(":")[-1]
+
+    if port_result.returncode != 0 or not port:
+        return None
+    return port
+
+
+def get_container_created_at(container_name: str) -> str | None:
+    """Return the container creation timestamp or None."""
+
+    created_cmd = ["docker", "inspect", "-f", "{{.Created}}", container_name]
+    created_result = subprocess.run(
+        created_cmd, capture_output=True, text=True, check=False
+    )
+    created = created_result.stdout.strip()
+
+    if created_result.returncode != 0:
+        return None
+    return created
+
+
+def container_exists(container_name: str) -> bool:
+    """Check if a container exists (regardless of state)."""
+
+    inspect = subprocess.run(
+        ["docker", "inspect", container_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    return inspect.returncode == 0
+
+
+def get_container_info(container_name: str) -> dict | None:
+    """Return a dict with state, port, created_at, or None if container doesn't exist."""
+
+    state = get_container_state(container_name)
+    if state is None:
+        return None
+
+    return {
+        "name": container_name,
+        "state": state,
+        "port": get_container_port(container_name),
+        "created_at": get_container_created_at(container_name),
+    }
 
 
 if __name__ == "__main__":

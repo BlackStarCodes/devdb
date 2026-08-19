@@ -10,7 +10,9 @@ import yaml
 from devdb.config import load_config
 from devdb.container import (
     cleanup_container,
+    container_exists,
     create_postgres_container,
+    get_container_info,
     get_container_name,
 )
 
@@ -332,6 +334,55 @@ def test(
     else:
         print("✅ Command completed successfully.")
     raise typer.Exit(code=returncode)
+
+
+@app.command()
+def status():
+    """Show the current container state (running/port/TTL) for the current directory."""
+
+    container_name = get_container_name()
+    info = get_container_info(container_name)
+
+    if info is None:
+        print("❌ No DevDB container found for the current directory!")
+        print(f"   Current directory: {Path.cwd()}")
+        print("💡 Run 'devdb start' to start a new container in this directory  ")
+
+        raise typer.Exit(code=1)
+
+    if info["state"] != "running":
+        print(
+            f"⚠️  Container: {container_name} is not running (status: {info['status']})"
+        )
+        print(f"   Current directory: {Path.cwd()}")
+        raise typer.Exit(code=1)
+
+    print(f"✅ Container {container_name} is running")
+    print(f"   Port: {info['port']}")
+    print(f"   Status: {info['state']}")
+    print(f"   Created at: {info['created_at']}")
+    print(f"   Project directory: {Path.cwd()}")
+    print("💡 To stop it, run 'devdb stop'")
+
+
+@app.command()
+def stop():
+    """Stop and remove the container for the current directory."""
+
+    container_name = get_container_name()
+
+    if not container_exists(container_name):
+        print("❌ No DevDB container found for the current directory!")
+        print(f"   Current directory: {Path.cwd()}")
+        print("💡 Run 'devdb start' to start a new container in this directory.")
+        raise typer.Exit(code=1)
+
+    if cleanup_container():
+        print(f"✅ Stopped and removed {container_name}")
+        raise typer.Exit(code=0)
+    else:
+        print(f"❌ Failed to stop container: {container_name}")
+        raise typer.Exit(code=1)
 
 
 @app.command()
