@@ -27,7 +27,7 @@ env/
 # Config (user-specific, never commit)
 devdb.yaml
 .env
+.devdb.lock
 
 # OS
 .DS_Store
-EOF

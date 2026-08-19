@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "portalocker>=4.1.0",
     "psycopg2-binary>=2.9.12",
     "pyyaml>=6.0.3",
     "typer>=0.27.1",
