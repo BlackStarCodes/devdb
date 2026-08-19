@@ -1,7 +1,6 @@
 import atexit
 import hashlib
 import random
-import socket
 import string
 import subprocess
 import time
@@ -14,19 +13,6 @@ def generate_random_string(length=8):
     """Generate a random alphanumeric string for container name/password."""
 
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
-
-
-def find_available_port(start_port=5432, max_attempts=100):
-    """Find a free port on the host starting from a given port."""
-
-    for port in range(start_port, start_port + max_attempts):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("", port))
-                return port
-            except OSError:
-                continue
-    raise RuntimeError("No available port found")
 
 
 def get_container_name():
@@ -91,10 +77,7 @@ def create_postgres_container(ttl):
     db_user = "devdb"
     db_password = generate_random_string(12)
 
-    # 2. Find an available port
-    host_port = find_available_port()
-
-    # 3. Build the docker run command
+    # 2. Build the docker run command
     docker_cmd = [
         "docker",
         "run",
@@ -108,11 +91,11 @@ def create_postgres_container(ttl):
         "-e",
         f"POSTGRES_PASSWORD={db_password}",
         "-p",
-        f"{host_port}:5432",
+        "5432",
         "postgres:15-alpine",
     ]
 
-    # 4. Run the container
+    # 3. Run the container
     print(f"🐳 Starting Postgres container: {container_name}")
     result = subprocess.run(docker_cmd, capture_output=True, text=True, check=False)
     start_time = time.time()
@@ -126,7 +109,7 @@ def create_postgres_container(ttl):
     container_id = result.stdout.strip()
     print(f"\n✅ Container started with id: {container_id[:12]}")
 
-    # 5. Wait for Postgres to become healthy
+    # 4. Wait for Postgres to become healthy
     print("⏳ Waiting for Postgres to be ready...")
     for _ in range(30):
         check_cmd = [
@@ -155,14 +138,29 @@ def create_postgres_container(ttl):
         cleanup_container()
         raise RuntimeError("Postgres did not start in time")
 
+    port_result = subprocess.run(
+        ["docker", "port", container_name, "5432"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    try:
+        host_port = port_result.stdout.strip().split(":")[-1]
+        if not host_port:
+            raise ValueError("Empty port output")
+    except ValueError as e:
+        cleanup_container()
+        raise RuntimeError(f"Could not determine host port: {e}")
+
     conn_string = (
         f"postgresql://{db_user}:{db_password}@127.0.0.1:{host_port}/{db_name}"
     )
 
-    # 6. Register cleanup on normal exit
+    # 5. Register cleanup on normal exit
     print(f"\nThis container will auto-cleanup in {ttl} seconds.")
 
-    # 7. Output the connection string, deadline
+    # 6. Output the connection string, deadline
     atexit.register(cleanup_container)
     return conn_string, deadline
 
