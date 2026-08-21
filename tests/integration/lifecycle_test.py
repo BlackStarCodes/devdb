@@ -45,7 +45,7 @@ def test_stop_when_running(devdb_start):
     assert "Stopped and removed" in result.stdout
 
     check = subprocess.run(
-        ["docker", "ps-a", "--filter", f"name={container_name}"],
+        ["docker", "ps", "-a", "--filter", f"name={container_name}"],
         capture_output=True,
         text=True,
         check=False,

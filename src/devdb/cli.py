@@ -42,7 +42,7 @@ def start():
     print("🚀 Starting a fresh Postgres container for your test database...")
 
     try:
-        conn_string, deadline = create_postgres_container(ttl=ttl)
+        conn_string, deadline, container_name = create_postgres_container(ttl=ttl)
     except RuntimeError as e:
         print(f"❌ Failed to start container: {e}")
         raise typer.Exit(code=1)
@@ -63,7 +63,7 @@ def start():
             time.sleep(remaining)
 
             try:
-                cleanup_container()
+                cleanup_container(container_name)
             except RuntimeError:
                 print("❌ Cleanup failed!")
                 raise typer.Exit(code=1)
@@ -73,7 +73,7 @@ def start():
         else:
             print("⚠️  TTL expired during container startup. Cleaning up immediately.")
             try:
-                cleanup_container()
+                cleanup_container(container_name)
             except RuntimeError:
                 print("❌ Cleanup failed!")
                 raise typer.Exit(code=1)
@@ -84,7 +84,7 @@ def start():
         # Cleanup already handled by signal handler in container.py
 
         try:
-            cleanup_container()
+            cleanup_container(container_name)
         except RuntimeError:
             print("❌ Cleanup failed!")
             raise typer.Exit(code=1)
@@ -260,7 +260,7 @@ def test(
     # 1. Start the container
     print("🚀 Starting Postgres container for your command...")
     try:
-        conn_string, _deadline = create_postgres_container(ttl=3600)
+        conn_string, _deadline, container_name = create_postgres_container(ttl=3600)
     except RuntimeError as e:
         print(f"❌ Failed to start container: {e}")
         raise typer.Exit(code=1)
@@ -270,7 +270,7 @@ def test(
         migration_file = Path(migrations_path).expanduser().resolve()
         if not migration_file.exists():
             print(f"❌ Migration file not found: {migration_file}")
-            cleanup_container()
+            cleanup_container(container_name)
             raise typer.Exit(code=1)
 
         print(f"📥 Applying migrations from: {migration_file}")
@@ -299,7 +299,7 @@ def test(
             _, stderr = migration_proc.communicate()
             if migration_proc.returncode != 0:
                 print(f"❌ Migration failed: {stderr.decode()}")
-                cleanup_container()
+                cleanup_container(container_name)
                 raise typer.Exit(code=1)
         print("✅ Migrations applied successfully!")
 
@@ -324,10 +324,10 @@ def test(
         print("\n🛑 Interrupted by the user. Cleaning up...")
         child_proc.terminate()
         child_proc.wait()
-        cleanup_container()
+        cleanup_container(container_name)
         raise typer.Exit(code=130)
 
-    cleanup_container()
+    cleanup_container(container_name)
 
     if returncode != 0:
         print(f"❌ Command exited with code: {returncode}")
@@ -377,7 +377,7 @@ def stop():
         print("💡 Run 'devdb start' to start a new container in this directory.")
         raise typer.Exit(code=1)
 
-    if cleanup_container():
+    if cleanup_container(container_name):
         print(f"✅ Stopped and removed {container_name}")
         raise typer.Exit(code=0)
     else:

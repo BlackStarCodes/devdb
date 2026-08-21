@@ -1,4 +1,5 @@
 import atexit
+import functools
 import hashlib
 import random
 import string
@@ -7,8 +8,6 @@ import time
 from pathlib import Path
 
 import portalocker
-
-_container_name = None
 
 
 def generate_random_string(length=8):
@@ -24,10 +23,18 @@ def get_container_name():
     return f"devdb-{cwd_hash}"
 
 
-def cleanup_container():
+def _run_docker(*args: str) -> subprocess.CompletedProcess:
+    """Run a docker command with standard arguments."""
+    return subprocess.run(
+        ["docker", *args], capture_output=True, text=True, check=False
+    )
+
+
+def cleanup_container(container_name):
     """Stop and remove the container if it exists."""
 
-    global _container_name
+    _container_name = container_name
+
     if not _container_name:
         return True
 
@@ -78,8 +85,6 @@ def create_postgres_container(ttl):
     if ttl <= 0:
         raise ValueError("TTL must be a positive integer")
 
-    global _container_name
-
     lock_path = Path.cwd() / ".devdb.lock"
     with portalocker.Lock(lock_path, timeout=10) as _lock:
         # 1. Generate a deterministic container name and ensure a clean slate
@@ -90,7 +95,6 @@ def create_postgres_container(ttl):
             text=True,
             check=False,
         )
-        _container_name = container_name
 
         db_name = "devdb"
         db_user = "devdb"
@@ -154,7 +158,7 @@ def create_postgres_container(ttl):
             time.sleep(1)
         else:
             print("❌ Timeout waiting for Postgres")
-            cleanup_container()
+            cleanup_container(container_name)
             raise RuntimeError("Postgres did not start in time")
 
         port_result = subprocess.run(
@@ -169,7 +173,7 @@ def create_postgres_container(ttl):
             if not host_port:
                 raise ValueError("Empty port output")
         except ValueError as e:
-            cleanup_container()
+            cleanup_container(container_name)
             raise RuntimeError(f"Could not determine host port: {e}")
 
         conn_string = (
@@ -180,8 +184,8 @@ def create_postgres_container(ttl):
         print(f"\nThis container will auto-cleanup in {ttl} seconds.")
 
         # 6. Output the connection string, deadline
-        atexit.register(cleanup_container)
-        return conn_string, deadline
+        atexit.register(functools.partial(cleanup_container, container_name))
+        return conn_string, deadline, container_name
 
 
 def get_container_state(container_name: str) -> str | None:
@@ -207,11 +211,9 @@ def get_container_port(container_name: str) -> str | None:
         text=True,
         check=False,
     )
-    port = port_result.stdout.strip().split(":")[-1]
-
-    if port_result.returncode != 0 or not port:
+    if port_result.returncode != 0 or not port_result.stdout.strip():
         return None
-    return port
+    return port_result.stdout.strip().split(":")[-1]
 
 
 def get_container_created_at(container_name: str) -> str | None:
@@ -261,9 +263,10 @@ if __name__ == "__main__":
 
     ttl = 10
     create_postgres_container(ttl=ttl)
+    container_name = get_container_name()
     try:
         # Keep the main thread alive for manual testing.
         # Sleep for TTL + 1 second. Ctrl+C will interrupt this sleep.
         time.sleep(ttl + 1)
     except KeyboardInterrupt:
-        cleanup_container()
+        cleanup_container(cleanup_container(container_name))
