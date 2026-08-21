@@ -1,12 +1,11 @@
-import subprocess
 from pathlib import Path
+
+from conftest import run_devdb
 
 
 def test_init_creates_file(test_project_dir):
     """Test that `devdb init` creates a devdb.yaml file."""
-    result = subprocess.run(
-        ["uv", "run", "devdb", "init"], capture_output=True, text=True, check=False
-    )
+    result = run_devdb("init")
 
     assert result.returncode == 0
     assert "✅ Created devdb.yaml" in result.stdout
@@ -26,9 +25,7 @@ def test_init_does_not_overwrite(test_project_dir):
     config_path = Path("devdb.yaml")
     config_path.write_text("ttl_seconds:999")
 
-    result = subprocess.run(
-        ["uv", "run", "devdb", "init"], capture_output=True, text=True, check=False
-    )
+    result = run_devdb("init")
 
     assert result.returncode != 0
     assert "already exists" in result.stderr or "already exists" in result.stdout

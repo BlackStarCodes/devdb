@@ -7,6 +7,7 @@ from devdb.config import load_config
 
 def test_load_config_defaults(test_project_dir):
     """Test that config returns defaults when no devdb.yaml exists."""
+
     config = load_config()
     assert config["ttl_seconds"] == 300
     assert config["migrations_path"] is None
@@ -16,6 +17,7 @@ def test_load_config_defaults(test_project_dir):
 
 def test_load_config_with_user_values(test_project_dir):
     """Test that user values override defaults."""
+
     config_path = Path("devdb.yaml")
     config_path.write_text("""
 ttl_seconds: 60

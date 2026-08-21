@@ -1,5 +1,6 @@
-import subprocess
 from pathlib import Path
+
+from conftest import run_devdb
 
 
 def test_devdb_test_real_db_usage(test_project_dir):
@@ -51,12 +52,7 @@ if __name__ == "__main__":
 """)
 
     # 2. Run the script via devdb test
-    result = subprocess.run(
-        ["uv", "run", "devdb", "test", "--", "python", str(script)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = run_devdb("test", "--", "python", str(script))
 
     # 3. Assert success
     assert result.returncode == 0, (
@@ -117,22 +113,7 @@ if __name__ == "__main__":
 """)
 
     # 3. Run the command with --migrations
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "devdb",
-            "test",
-            "--migrations",
-            str(schema),
-            "--",
-            "python",
-            str(script),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = run_devdb("test", "--migrations", str(schema), "--", "python", str(script))
 
     # 4. Assert success
     assert result.returncode == 0, (
@@ -257,12 +238,7 @@ sys.exit(result.returncode)
     # 6. Run devdb test with the combined script
     # The default TTL for `devdb test` is 3600s, which is long enough to outlast
     # the Alembic migration + test script execution.
-    result = subprocess.run(
-        ["uv", "run", "devdb", "test", "--", "python", str(combined_script)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = run_devdb("test", "--", "python", str(combined_script))
 
     assert result.returncode == 0, (
         f"Command failed with code {result.returncode}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
@@ -347,20 +323,7 @@ result = subprocess.run(["python", "seed_test.py"], env=os.environ)
 sys.exit(result.returncode)
 """)
 
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "devdb",
-            "test",
-            "--",
-            "python",
-            str(runner),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = run_devdb("test", "--", "python", str(runner))
 
     assert result.returncode == 0, (
         f"Command failed with code {result.returncode}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
@@ -402,13 +365,7 @@ def test_create_and_query(db_connection):
     assert count == 2
 """)
 
-    result = subprocess.run(
-        ["uv", "run", "devdb", "test", "--", "pytest", "-v"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
+    result = run_devdb("test", "--", "pytest", "-v")
     assert result.returncode == 0, (
         f"Command failed with code {result.returncode}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     )
@@ -426,12 +383,7 @@ print("This test will fail")
 sys.exit(1)
 """)
 
-    result = subprocess.run(
-        ["uv", "run", "devdb", "test", "--", "python", str(script)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = run_devdb("test", "--", "python", str(script))
 
     # The test should fail (return code 1)
     assert result.returncode == 1, f"Expected return code 1, got {result.returncode}"

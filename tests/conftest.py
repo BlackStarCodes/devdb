@@ -9,17 +9,6 @@ import pytest
 from devdb.container import get_container_name
 
 
-def cleanup_container(container_name):
-    """Force remove a container (used in fixtures and finalizers)."""
-    if container_name:
-        subprocess.run(
-            ["docker", "rm", "-f", container_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-
 @pytest.fixture(scope="function")
 def test_project_dir():
     """Create a temporary directory and isolate the test."""
@@ -51,7 +40,7 @@ def devdb_start(test_project_dir):
         env["PYTHONUNBUFFERED"] = "1"
 
         proc = subprocess.Popen(
-            ["uv", "run", "devdb", "start"],
+            devdb_cmd("start"),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -60,16 +49,15 @@ def devdb_start(test_project_dir):
 
         # Wait for container to be running AND Postgres to accept TCP connections
         for _ in range(30):
-            state_cmd = ["docker", "inspect", "-f", "{{.State.Status}}", container_name]
-            state_result = subprocess.run(
-                state_cmd, capture_output=True, text=True, check=False
+            state_result = run_docker(
+                "inspect", "-f", "{{.State.Status}}", container_name
             )
+
             if state_result.stdout.strip() != "running":
                 time.sleep(1)
                 continue
 
-            pg_cmd = [
-                "docker",
+            pg_result = run_docker(
                 "exec",
                 container_name,
                 "pg_isready",
@@ -81,10 +69,8 @@ def devdb_start(test_project_dir):
                 "devdb",
                 "-d",
                 "devdb",
-            ]
-            pg_result = subprocess.run(
-                pg_cmd, capture_output=True, text=True, check=False
             )
+
             if "accepting connections" in pg_result.stdout:
                 break
             time.sleep(1)
@@ -94,17 +80,13 @@ def devdb_start(test_project_dir):
             )
 
         # Get host port
-        port_cmd = ["docker", "port", container_name, "5432"]
-        port_result = subprocess.run(
-            port_cmd, capture_output=True, text=True, check=False
-        )
+
+        port_result = run_docker("port", container_name, "5432")
         host_port = port_result.stdout.strip().split(":")[-1]
 
         # Get password from container
-        env_cmd = ["docker", "exec", container_name, "env"]
-        env_result = subprocess.run(
-            env_cmd, capture_output=True, text=True, check=False
-        )
+        env_result = run_docker("exec", container_name, "env")
+
         env_lines = env_result.stdout.strip().split("\n")
         db_password = None
         for line in env_lines:
@@ -131,13 +113,44 @@ def devdb_start(test_project_dir):
 
         # Force remove the container
         if container_name:
-            subprocess.run(
-                ["docker", "rm", "-f", container_name],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+            run_docker("rm", "-f", container_name)
 
 
 def devdb_cmd(*args: str) -> list[str]:
+    """Return the base DevDB command with the given arguments."""
     return ["uv", "run", "devdb", *args]
+
+
+def run_devdb(*args: str, **kwargs) -> subprocess.CompletedProcess:
+    """
+    Run a DevDB command with standard arguments (capture_output=True, text=True, check=False)
+    Additional kwargs are passed through.
+    """
+    cmd = devdb_cmd(*args)
+    return subprocess.run(cmd, capture_output=True, text=True, check=False, **kwargs)
+
+
+def docker_cmd(*args: str) -> list[str]:
+    """Return the base Docker command with the given arguments."""
+    return ["docker", *args]
+
+
+def run_docker(*args: str, **kwargs) -> subprocess.CompletedProcess:
+    """
+    Run a Docker command with standard arguments (capture_output=True, text=True, check=False)
+    Additional kwargs are passed through.
+    """
+    cmd = docker_cmd(*args)
+    return subprocess.run(cmd, capture_output=True, text=True, check=False, **kwargs)
+
+
+def exec_psql(
+    container_name: str, query: str, db_name: str = "devdb", user: str = "devdb"
+) -> subprocess.CompletedProcess:
+    """
+    Execute a SQL query inside a DevDB container via psql.
+    """
+
+    return run_docker(
+        "exec", container_name, "psql", "-U", user, "-d", db_name, "-c", query
+    )
