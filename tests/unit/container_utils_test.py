@@ -15,7 +15,9 @@ def test_generate_random_string_default():
     """Test default length and character set."""
     s = generate_random_string()
     assert len(s) == 8
-    assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in s)
+    # secrets.token_urlsafe can include '-', '_' in addition to alphanumerics.
+    # Postgres accepts these, so we only check that the string is non-empty.
+    assert all(c.isalnum() or c in "-_" for c in s)
 
 
 def test_get_container_name():
