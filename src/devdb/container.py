@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import portalocker
+import psycopg2
 
 
 def generate_random_string(length=8):
@@ -33,42 +34,25 @@ def _run_docker(*args: str) -> subprocess.CompletedProcess:
 def cleanup_container(container_name):
     """Stop and remove the container if it exists."""
 
-    _container_name = container_name
-
-    if not _container_name:
+    if not container_name:
         return True
 
-    inspect = subprocess.run(
-        ["docker", "inspect", _container_name],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    inspect = _run_docker("inspect", container_name)
 
     if inspect.returncode == 0:
-        print(f"\n🧹 Cleaning up container: {_container_name}")
-        stop = subprocess.run(
-            ["docker", "stop", _container_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        rm = subprocess.run(
-            ["docker", "rm", _container_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        print(f"\n🧹 Cleaning up container: {container_name}")
+        stop = _run_docker("stop", container_name)
+        rm = _run_docker("rm", container_name)
 
         if stop.returncode != 0 or rm.returncode != 0:
             print("❌ Failed to clean up container!")
             raise RuntimeError("Docker cleanup failed")
 
-        print(f"\n✅ Container removed: {_container_name}")
-        _container_name = None
+        print(f"\n✅ Container removed: {container_name}")
+        container_name = None
         return True
 
-    _container_name = None
+    container_name = None
     return False
 
 
@@ -79,7 +63,7 @@ def create_postgres_container(ttl):
         ttl: Time-to-live in seconds (counted from the moment `docker run` is called).
 
     Returns:
-        tuple: (connection_string, deadline_timestamp)
+        tuple: (connection_string, deadline_timestamp, container_name)
 
     """
     if ttl <= 0:
@@ -89,12 +73,7 @@ def create_postgres_container(ttl):
     with portalocker.Lock(lock_path, timeout=10) as _lock:
         # 1. Generate a deterministic container name and ensure a clean slate
         container_name = get_container_name()
-        subprocess.run(
-            ["docker", "rm", "-f", container_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        _run_docker("rm", "-f", container_name)
 
         db_name = "devdb"
         db_user = "devdb"
@@ -102,7 +81,6 @@ def create_postgres_container(ttl):
 
         # 2. Build the docker run command
         docker_cmd = [
-            "docker",
             "run",
             "-d",
             "--name",
@@ -120,7 +98,7 @@ def create_postgres_container(ttl):
 
         # 3. Run the container
         print(f"🐳 Starting Postgres container: {container_name}")
-        result = subprocess.run(docker_cmd, capture_output=True, text=True, check=False)
+        result = _run_docker(*docker_cmd)
         start_time = time.time()
         deadline = start_time + ttl
 
@@ -136,7 +114,6 @@ def create_postgres_container(ttl):
         print("⏳ Waiting for Postgres to be ready...")
         for _ in range(30):
             check_cmd = [
-                "docker",
                 "exec",
                 container_name,
                 "pg_isready",
@@ -149,9 +126,8 @@ def create_postgres_container(ttl):
                 "-d",
                 db_name,
             ]
-            check_result = subprocess.run(
-                check_cmd, capture_output=True, text=True, check=False
-            )
+            check_result = _run_docker(*check_cmd)
+
             if "accepting connections" in check_result.stdout:
                 print("✅ Your test database is ready!")
                 break
@@ -161,12 +137,7 @@ def create_postgres_container(ttl):
             cleanup_container(container_name)
             raise RuntimeError("Postgres did not start in time")
 
-        port_result = subprocess.run(
-            ["docker", "port", container_name, "5432"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        port_result = _run_docker("port", container_name, "5432")
 
         try:
             host_port = port_result.stdout.strip().split(":")[-1]
@@ -176,14 +147,33 @@ def create_postgres_container(ttl):
             cleanup_container(container_name)
             raise RuntimeError(f"Could not determine host port: {e}")
 
+        # 5. Verify host can actually connect to the container.
+        for _ in range(5):
+            try:
+                conn = psycopg2.connect(
+                    host="127.0.0.1",
+                    port=host_port,
+                    user=db_user,
+                    password=db_password,
+                    dbname=db_name,
+                )
+                conn.close()
+                break
+            except psycopg2.OperationalError:
+                time.sleep(0.5)
+        else:
+            print("❌ Host connectivity test failed.")
+            cleanup_container(container_name)
+            raise RuntimeError("Postgres host port not ready after startup")
+
         conn_string = (
             f"postgresql://{db_user}:{db_password}@127.0.0.1:{host_port}/{db_name}"
         )
 
-        # 5. Register cleanup on normal exit
+        # 6. Register cleanup on normal exit
         print(f"\nThis container will auto-cleanup in {ttl} seconds.")
 
-        # 6. Output the connection string, deadline
+        # 7. Output the connection string, deadline
         atexit.register(functools.partial(cleanup_container, container_name))
         return conn_string, deadline, container_name
 
@@ -191,10 +181,8 @@ def create_postgres_container(ttl):
 def get_container_state(container_name: str) -> str | None:
     """Return the container's state or None if it doesn't exist."""
 
-    status_cmd = ["docker", "inspect", "-f", "{{.State.Status}}", container_name]
-    status_result = subprocess.run(
-        status_cmd, capture_output=True, text=True, check=False
-    )
+    status_cmd = ["inspect", "-f", "{{.State.Status}}", container_name]
+    status_result = _run_docker(*status_cmd)
     state = status_result.stdout.strip()
 
     if status_result.returncode != 0:
@@ -205,12 +193,8 @@ def get_container_state(container_name: str) -> str | None:
 def get_container_port(container_name: str) -> str | None:
     """Return the host port or None if not found."""
 
-    port_result = subprocess.run(
-        ["docker", "port", container_name, "5432"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    port_result = _run_docker("port", container_name, "5432")
+
     if port_result.returncode != 0 or not port_result.stdout.strip():
         return None
     return port_result.stdout.strip().split(":")[-1]
@@ -219,10 +203,8 @@ def get_container_port(container_name: str) -> str | None:
 def get_container_created_at(container_name: str) -> str | None:
     """Return the container creation timestamp or None."""
 
-    created_cmd = ["docker", "inspect", "-f", "{{.Created}}", container_name]
-    created_result = subprocess.run(
-        created_cmd, capture_output=True, text=True, check=False
-    )
+    created_cmd = ["inspect", "-f", "{{.Created}}", container_name]
+    created_result = _run_docker(*created_cmd)
     created = created_result.stdout.strip()
 
     if created_result.returncode != 0:
@@ -233,12 +215,7 @@ def get_container_created_at(container_name: str) -> str | None:
 def container_exists(container_name: str) -> bool:
     """Check if a container exists (regardless of state)."""
 
-    inspect = subprocess.run(
-        ["docker", "inspect", container_name],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    inspect = _run_docker("inspect", container_name)
 
     return inspect.returncode == 0
 
@@ -269,4 +246,4 @@ if __name__ == "__main__":
         # Sleep for TTL + 1 second. Ctrl+C will interrupt this sleep.
         time.sleep(ttl + 1)
     except KeyboardInterrupt:
-        cleanup_container(cleanup_container(container_name))
+        cleanup_container(container_name)
