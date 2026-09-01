@@ -1,6 +1,7 @@
 import csv
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import yaml
 
 from devdb.config import load_config
 from devdb.container import (
+    _force_remove_container,
     cleanup_container,
     container_exists,
     create_postgres_container,
@@ -27,28 +29,56 @@ def main():
 
 
 @app.command()
-def start():
-    """Start a new isolated Postgres test database.
-
-    The container will auto-cleanup after the TTL expires or when you press Ctrl+C.
+def start(
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force restart: remove existing container and start fresh.",
+    ),
+):
     """
-
+    Start a fresh Postgres container for the current project.
+    If a container is already running, prints its status and exits.
+    Use --force to restart an existing container.
+    """
     config = load_config()
     ttl = config.get("ttl_seconds", 300)
 
     if not isinstance(ttl, int) or ttl <= 0:
         raise typer.BadParameter("ttl_seconds must be a positive integer!")
 
-    print("🚀 Starting a fresh Postgres container for your test database...")
+    container_name = get_container_name()
+    # --- 1. Check existing container state ---
+    info = get_container_info(container_name)
 
+    if info and info["state"] == "running":
+        if force:
+            print(f"⚠️  Forcing restart: stopping and removing {container_name}")
+            cleanup_container(container_name)
+        else:
+            print("✅ DevDB is already running for this project")
+            print(f"   Container: {container_name}")
+            print(f"   Port: {info['port']}")
+            print(f"   Status: {info['state']}")
+            print(f"   Project directory: {Path.cwd()}")
+            print("💡 To restart, run 'devdb stop' first, or use 'devdb start --force'")
+            raise typer.Exit(code=0)
+
+    if info and info["state"] != "running":
+        print(f"🧹 Removing stale container: {container_name}")
+        _force_remove_container(container_name)
+
+    # --- 2. Start fresh container ---
+    print("🚀 Starting a fresh Postgres container for your test database...")
     try:
         conn_string, deadline, container_name = create_postgres_container(ttl=ttl)
     except RuntimeError as e:
         print(f"❌ Failed to start container: {e}")
         raise typer.Exit(code=1)
-
     remaining = deadline - time.time()
 
+    # --- 3. Print the ready banner (URL is visible here) ---
     print("\n" + "=" * 50)
     print("✅ DevDB is ready for use!")
     print(f"\n🔗 DATABASE_URL: {conn_string}")
@@ -56,40 +86,22 @@ def start():
     print("\n⚠️  Press Ctrl+C to stop and clean up the container.")
     print("=" * 50)
 
+    # --- 4. Wait for TTL or interruption ---
+    shutdown_reason = "TTL expired"
     try:
-        # Sleep for the TTL duration.
-        # The cleanup timer will trigger on its own.
-        if remaining > 0:
-            time.sleep(remaining)
-
-            try:
-                cleanup_container(container_name)
-            except RuntimeError:
-                print("❌ Cleanup failed!")
-                raise typer.Exit(code=1)
-            print("\n✅ DevDB shutdown complete (TTL expired).")
-            raise typer.Exit(code=0)
-
-        else:
-            print("⚠️  TTL expired during container startup. Cleaning up immediately.")
-            try:
-                cleanup_container(container_name)
-            except RuntimeError:
-                print("❌ Cleanup failed!")
-                raise typer.Exit(code=1)
-
-            raise typer.Exit(code=1)
-
+        time.sleep(remaining)
     except KeyboardInterrupt:
-        # Cleanup already handled by signal handler in container.py
+        print("\n🛑 Interrupted by user. Cleaning up...")
+        shutdown_reason = "interrupted by user"
 
-        try:
-            cleanup_container(container_name)
-        except RuntimeError:
-            print("❌ Cleanup failed!")
-            raise typer.Exit(code=1)
-        print("\n✅ DevDB shutdown complete! (interrupted by user)")
-        raise typer.Exit(code=0)
+    # --- 5. Single cleanup block ---
+    try:
+        cleanup_container(container_name)
+        print(f"\n✅ DevDB shutdown complete ({shutdown_reason}).")
+        sys.exit(0)
+    except RuntimeError:
+        print("❌ Cleanup failed!")
+        sys.exit(1)
 
 
 @app.command()

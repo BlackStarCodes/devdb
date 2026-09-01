@@ -30,26 +30,31 @@ def _run_docker(*args: str) -> subprocess.CompletedProcess:
 
 
 def cleanup_container(container_name: str) -> bool:
-    """Stop and remove the container if it exists."""
-
+    """Stop and remove the container if it exists. Idempotent – safe to call multiple times."""
     if not container_name:
         return True
 
+    # Check if container exists
     inspect = _run_docker("inspect", container_name)
-
-    if inspect.returncode == 0:
-        print(f"\n🧹 Cleaning up container: {container_name}")
-        stop = _run_docker("stop", container_name)
-        rm = _run_docker("rm", container_name)
-
-        if stop.returncode != 0 or rm.returncode != 0:
-            print("❌ Failed to clean up container!")
-            raise RuntimeError("Docker cleanup failed")
-
-        print(f"\n✅ Container removed: {container_name}")
+    if inspect.returncode != 0:
         return True
 
-    return False
+    print(f"\n🧹 Cleaning up container: {container_name}")
+    _run_docker("stop", container_name)
+    rm = _run_docker("rm", "-f", container_name)
+
+    if rm.returncode != 0:
+        # If rm fails, check if it's because the container is already gone
+        inspect_again = _run_docker("inspect", container_name)
+        if inspect_again.returncode != 0:
+            # It's already gone – success
+            return True
+        # Otherwise, it's a genuine failure
+        print("❌ Failed to clean up container!")
+        raise RuntimeError("Docker cleanup failed")
+
+    print(f"✅ Container removed: {container_name}")
+    return True
 
 
 def _force_remove_container(container_name: str) -> None:
@@ -92,6 +97,10 @@ def _verify_host_connectivity(
     container_name: str, host_port: str, db_user: str, db_password: str, db_name: str
 ) -> None:
     """Verify host can connect via psycopg2 (up to 5 attempts). Raises RuntimeError on failure."""
+    docker_info = _run_docker("info")
+    if docker_info.returncode != 0:
+        raise RuntimeError("Docker daemon is not responsive. Please restart Docker.")
+
     for _ in range(5):
         try:
             conn = psycopg2.connect(
