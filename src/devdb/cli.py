@@ -11,12 +11,78 @@ import yaml
 from devdb.config import load_config
 from devdb.container import (
     _force_remove_container,
+    _run_docker,
     cleanup_container,
     container_exists,
     create_postgres_container,
     get_container_info,
     get_container_name,
 )
+
+
+def _seed_sql(container_name: str, seed_path: Path) -> None:
+    """Load a SQL file into the container. Raises RuntimeError on failure."""
+    print(f"📥 Loading SQL seed: {seed_path}")
+    with open(seed_path, "rb") as f:
+        proc = subprocess.Popen(
+            [
+                "docker",
+                "exec",
+                "-i",
+                container_name,
+                "psql",
+                "-U",
+                "devdb",
+                "-d",
+                "devdb",
+            ],
+            stdin=f,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _, stderr = proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"SQL seeding failed: {stderr.decode()}")
+    print("✅ SQL seed loaded successfully.")
+
+
+def _seed_csv(container_name: str, seed_path: Path, seed_table: str) -> None:
+    """Load a CSV file into the container using COPY. Raises RuntimeError on failure."""
+
+    print(f"📥 Loading CSV seed: {seed_path} into table '{seed_table}'")
+    try:
+        with open(seed_path, "r") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+    except StopIteration:
+        raise RuntimeError("CSV file is empty")
+
+    columns = ", ".join(header)
+    copy_cmd = f"COPY {seed_table} ({columns}) FROM STDIN CSV HEADER;"
+
+    cmd = [
+        "docker",
+        "exec",
+        "-i",
+        container_name,
+        "psql",
+        "-U",
+        "devdb",
+        "-d",
+        "devdb",
+        "-c",
+        copy_cmd,
+    ]
+
+    with open(seed_path, "rb") as f:
+        proc = subprocess.Popen(
+            cmd, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        _, stderr = proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"CSV seeding failed: {stderr.decode()}")
+    print("✅ CSV seed loaded successfully.")
+
 
 __version__ = "0.1.0"
 
@@ -140,12 +206,22 @@ def init():
 @app.command()
 def seed(
     file: str | None = typer.Option(
-        None, "--file", "-f", help="Path to SQL or CSV file"
+        None,
+        "--file",
+        "-f",
+        help="Path to SQL or CSV file to load into the running database.",
     ),
     table: str | None = typer.Option(
-        None, "--table", "-t", help="Target table name (required for CSV)"
+        None, "--table", "-t", help="Target table name (required for CSV files)."
     ),
 ):
+    """
+    Load seed data (SQL or CSV) into the running DevDB container.
+
+    The container must be running (started with 'devdb start').
+    For SQL files, the entire file is executed via psql.
+    For CSV files, the header is read to map columns, and the data is inserted using COPY.
+    """
 
     config = load_config()
     seed_file = file or config.get("seed_file")
@@ -162,16 +238,9 @@ def seed(
         print(f"❌ Seed file not found: {seed_path}")
         raise typer.Exit(code=1)
 
-    from devdb.container import get_container_name
-
     container_name = get_container_name()
 
-    check = subprocess.run(
-        ["docker", "inspect", "-f", "{{.State.Status}}", container_name],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    check = _run_docker("inspect", "-f", "{{.State.Status}}", container_name)
     if check.returncode != 0 or check.stdout.strip() != "running":
         print(
             f"❌ '{container_name}' is not running. Start it with 'devdb start' first!"
@@ -179,72 +248,20 @@ def seed(
         raise typer.Exit(code=1)
 
     suffix = seed_path.suffix.lower()
-    if suffix == ".sql":
-        print(f"📥 Loading SQL seed: {seed_path}")
-        with open(seed_path, "rb") as f:
-            proc = subprocess.Popen(
-                [
-                    "docker",
-                    "exec",
-                    "-i",
-                    container_name,
-                    "psql",
-                    "-U",
-                    "devdb",
-                    "-d",
-                    "devdb",
-                ],
-                stdin=f,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            _, stderr = proc.communicate()
-            if proc.returncode != 0:
-                print(f"❌ SQL seeding failed: {stderr.decode()}")
+
+    try:
+        if suffix == ".sql":
+            _seed_sql(container_name, seed_path)
+        elif suffix == ".csv":
+            if not seed_table:
+                print("❌ CSV seeding requires --table or seed_table in config.")
                 raise typer.Exit(code=1)
-        print("✅ SQL seed loaded successfully.")
-
-    elif suffix == ".csv":
-        if not seed_table:
-            print("❌ CSV seeding requires --table or seed_table in config.")
+            _seed_csv(container_name, seed_path, seed_table)
+        else:
+            print(f"❌ Unsupported file type: {suffix}. Use .sql or .csv file.")
             raise typer.Exit(code=1)
-
-        print(f"📥 Loading CSV seed: {seed_path} into table '{seed_table}'")
-        try:
-            with open(seed_path, "r") as f:
-                reader = csv.reader(f)
-                header = next(reader)
-        except StopIteration:
-            print("❌ CSV file is empty")
-            raise typer.Exit(code=1)
-        columns = ", ".join(header)
-        copy_cmd = f"COPY {seed_table} ({columns}) FROM STDIN CSV HEADER;"
-
-        cmd = [
-            "docker",
-            "exec",
-            "-i",
-            container_name,
-            "psql",
-            "-U",
-            "devdb",
-            "-d",
-            "devdb",
-            "-c",
-            copy_cmd,
-        ]
-
-        with open(seed_path, "rb") as f:
-            proc = subprocess.Popen(
-                cmd, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
-            _, stderr = proc.communicate()
-            if proc.returncode != 0:
-                print(f"❌ CSV seeding failed: {stderr.decode()}")
-                raise typer.Exit(code=1)
-        print("✅ CSV seed loaded successfully.")
-    else:
-        print(f"❌ Unsupported file type: {suffix}. Use .sql or .csv file.")
+    except RuntimeError as e:
+        print(f"❌ {e}")
         raise typer.Exit(code=1)
 
 
@@ -358,13 +375,13 @@ def status():
     if info is None:
         print("❌ No DevDB container found for the current directory!")
         print(f"   Current directory: {Path.cwd()}")
-        print("💡 Run 'devdb start' to start a new container in this directory  ")
+        print("💡 Run 'devdb start' to start a new container in this directory.")
 
         raise typer.Exit(code=1)
 
     if info["state"] != "running":
         print(
-            f"⚠️  Container: {container_name} is not running (status: {info['status']})"
+            f"⚠️  Container: {container_name} is not running (status: {info['state']})"
         )
         print(f"   Current directory: {Path.cwd()}")
         raise typer.Exit(code=1)
