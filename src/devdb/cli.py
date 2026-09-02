@@ -172,7 +172,7 @@ def start(
 
 @app.command()
 def init():
-    """Generate a devdb.yaml configuration file in the current directory."""
+    """Generate a devdb.yaml configuration file in the current directory. Does not overwrite an existing file."""
 
     config_path = Path("devdb.yaml")
 
@@ -198,7 +198,7 @@ def init():
         + yaml_content
     )
 
-    config_path.write_text(commented_content)
+    config_path.write_text(commented_content, encoding="utf-8")
     print(f"✅ Created {config_path}")
     print("💡 Edit this file to customize your DevDB environment.")
 
