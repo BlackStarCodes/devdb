@@ -1,5 +1,6 @@
 import csv
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -82,6 +83,30 @@ def _seed_csv(container_name: str, seed_path: Path, seed_table: str) -> None:
         if proc.returncode != 0:
             raise RuntimeError(f"CSV seeding failed: {stderr.decode()}")
     print("✅ CSV seed loaded successfully.")
+
+
+def _apply_migration(container_name: str, migration_file: Path) -> None:
+    """Apply a .sql migration file to the container. Raises RuntimeError on failure."""
+    print(f"📥 Applying migrations from: {migration_file}")
+
+    with open(migration_file, "rb") as f:
+        migration_proc = _run_docker(
+            "exec",
+            "-i",
+            container_name,
+            "psql",
+            "-h",
+            "127.0.0.1",
+            "-U",
+            "devdb",
+            "-d",
+            "devdb",
+            stdin=f,
+        )
+
+        if migration_proc.returncode != 0:
+            raise RuntimeError(f"Migration failed: {migration_proc.stderr}")
+    print("✅ Migrations applied successfully!")
 
 
 __version__ = "0.1.0"
@@ -302,35 +327,7 @@ def test(
             cleanup_container(container_name)
             raise typer.Exit(code=1)
 
-        print(f"📥 Applying migrations from: {migration_file}")
-        container_name = get_container_name()
-
-        with open(migration_file, "rb") as f:
-            migration_proc = subprocess.Popen(
-                [
-                    "docker",
-                    "exec",
-                    "-i",
-                    container_name,
-                    "psql",
-                    "-h",
-                    "127.0.0.1",
-                    "-U",
-                    "devdb",
-                    "-d",
-                    "devdb",
-                ],
-                stdin=f,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-
-            _, stderr = migration_proc.communicate()
-            if migration_proc.returncode != 0:
-                print(f"❌ Migration failed: {stderr.decode()}")
-                cleanup_container(container_name)
-                raise typer.Exit(code=1)
-        print("✅ Migrations applied successfully!")
+        _apply_migration(container_name, migration_file)
 
     # 3. Prepare env and run command
     env = os.environ.copy()
@@ -338,14 +335,20 @@ def test(
     print(f"\n🔗 DATABASE_URL={conn_string}")
     print(f"▶️  Running: {' '.join(command)}")
 
+    cmd0 = shutil.which(command[0])
+    if cmd0 is None:
+        print(f"❌ Command not found: {command[0]}")
+        cleanup_container(container_name)
+        raise typer.Exit(code=1)
+    resolved_command = [cmd0] + command[1:]
+
     child_proc = subprocess.Popen(
-        command,
+        resolved_command,
         env=env,
         stdout=None,
         stderr=None,
         text=True,
     )
-
     try:
         child_proc.wait()
         returncode = child_proc.returncode

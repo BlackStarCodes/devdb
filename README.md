@@ -37,6 +37,7 @@ Create a `devdb.yaml` file in your project root:
 ```yaml
 ttl_seconds: 120   # How long the container lives
 ```
+Run `devdb init` to generate this file automatically with helpful comments.
 
 The tool picks up the config automatically. If the file is missing, it falls back to 300 seconds.
 
@@ -54,7 +55,9 @@ The TTL clock starts the moment `docker run` is called – not after Postgres is
 
 | Command | Description |
 | :--- | :--- |
-| `devdb start` | Start a fresh Postgres container. |
+| `devdb start` | Start a fresh Postgres container (`--force` to restart). |
+| `devdb stop` | Stop and remove the current project's container. |
+| `devdb status` | Show container state (running/port/creation time). |
 | `devdb init` | Generate a `devdb.yaml` config file. |
 | `devdb seed` | Load SQL or CSV data into the running container. |
 | `devdb test` | Run a command with `DATABASE_URL` set to a fresh container (auto-cleanup). |
@@ -65,7 +68,7 @@ The TTL clock starts the moment `docker run` is called – not after Postgres is
 
 | Command | Description |
 | :--- | :--- |
-| `devdb status` | Show the current container state (running/port/TTL). |
+| _None_ – all core commands are now implemented. | Future features are listed in the Roadmap below. |
 
 ---
 
@@ -82,12 +85,48 @@ devdb test --migrations schema.sql -- pytest tests
 ```
 The container starts, DATABASE_URL is set, your command runs, and the container is destroyed on exit (even if the command fails).
 
+```python
+# Your tests must read DATABASE_URL from the environment:
+import os, psycopg2
+url = os.environ["DATABASE_URL"]
+conn = psycopg2.connect(url)
+```
+
+### Testing with Alembic
+
+If your project uses Alembic for migrations, add this hook to your `conftest.py`:
+
+```python
+import os
+from alembic.config import Config
+from alembic import command
+
+@pytest.fixture(scope="session", autouse=True)
+def run_alembic_migrations():
+    if os.environ.get("DATABASE_URL"):
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+        command.upgrade(alembic_cfg, "head")
+```
+Now devdb test will automatically apply migrations before running your tests.
+
+### Troubleshooting: Module not found
+
+If you see `ModuleNotFoundError: No module named 'your_project'`, set `PYTHONPATH`:
+
+```bash
+PYTHONPATH=. devdb test -- pytest tests/
+```
+Or add pythonpath = . to a pytest.ini file in your project root.
+
+
+
 ---
 
 ## Edge Cases & Error Handling
 
 - **Docker not running:** DevDB prints a clear error and exits.
-- **Port already in use:** The tool finds the next available port starting from 5432.
+- **Port allocation:** DevDB uses Docker's dynamic port allocation (`-p 5432`), so port conflicts are automatically avoided.
 - **TTL expires during startup:** The tool cleans up immediately and exits.
 - **Ctrl+C during startup:** The container is removed gracefully.
 

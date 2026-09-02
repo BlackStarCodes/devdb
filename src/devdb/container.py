@@ -22,10 +22,10 @@ def get_container_name() -> str:
     return f"devdb-{cwd_hash}"
 
 
-def _run_docker(*args: str) -> subprocess.CompletedProcess:
-    """Run a docker command with standard arguments."""
+def _run_docker(*args: str, **kwargs) -> subprocess.CompletedProcess:
+    """Run a docker command with standard arguments. Extra kwargs passed to subprocess.run."""
     return subprocess.run(
-        ["docker", *args], capture_output=True, text=True, check=False
+        ["docker", *args], capture_output=True, text=True, check=False, **kwargs
     )
 
 
