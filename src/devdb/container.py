@@ -4,6 +4,7 @@ import hashlib
 import secrets
 import subprocess
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import portalocker
@@ -58,7 +59,7 @@ def cleanup_container(container_name: str) -> bool:
 
 
 def _force_remove_container(container_name: str) -> None:
-    """Force-remove any existing container with the same name (silent idempotent)."""
+    """Force‑remove any existing container with the given name. Idempotent; does nothing if it doesn't exist."""
     _run_docker("rm", "-f", container_name)
 
 
@@ -266,6 +267,16 @@ def get_container_info(container_name: str) -> dict | None:
         "port": get_container_port(container_name),
         "created_at": get_container_created_at(container_name),
     }
+
+
+def get_container_ttl_remaining(container_name: str, ttl: int) -> int | None:
+    """Return seconds remaining until TTL expiry, or None if container doesn't exist."""
+    created_at = get_container_created_at(container_name)
+    if created_at is None:
+        return None
+    created_ts = datetime.fromisoformat(created_at)
+    elapsed = (datetime.now(UTC) - created_ts).total_seconds()
+    return max(0, int(ttl - elapsed))
 
 
 if __name__ == "__main__":

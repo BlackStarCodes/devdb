@@ -17,6 +17,7 @@ def test_status_when_running(devdb_start):
     assert "is running" in result.stdout
     assert "Port:" in result.stdout
     assert "Created at:" in result.stdout
+    assert "Remaining TTL:" in result.stdout
 
 
 def test_stop_when_no_container(test_project_dir):

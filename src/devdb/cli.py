@@ -18,6 +18,7 @@ from devdb.container import (
     create_postgres_container,
     get_container_info,
     get_container_name,
+    get_container_ttl_remaining,
 )
 
 
@@ -109,6 +110,40 @@ def _apply_migration(container_name: str, migration_file: Path) -> None:
     print("✅ Migrations applied successfully!")
 
 
+def _print_no_container_error() -> None:
+    """Print consistent 'no container' error message."""
+    print("❌ No DevDB container found for the current directory!")
+    print(f"   Current directory: {Path.cwd()}")
+    print("💡 Run 'devdb start' to start a new container in this directory.")
+
+
+def _print_container_info(info: dict, include_ttl: bool = False, ttl: int = 0) -> None:
+    """Print container details in a consistent format."""
+    if info is None:
+        _print_no_container_error()
+        return
+
+    state = info.get("state", "unknown")
+    if state != "running":
+        typer.echo(f"⚠️  Container {info['name']} is not running (status: {state})")
+        typer.echo(f"   Project directory: {Path.cwd()}")
+        return
+
+    typer.echo(f"✅ Container {info['name']} is running")
+    typer.echo(f"   Port: {info.get('port', 'N/A')}")
+    typer.echo(f"   Status: {state}")
+    if info.get("created_at"):
+        typer.echo(f"   Created at: {info['created_at']}")
+    typer.echo(f"   Project directory: {Path.cwd()}")
+
+    if include_ttl:
+        remaining = get_container_ttl_remaining(info["name"], ttl)
+        if remaining is not None:
+            typer.echo(f"   Remaining TTL: {remaining}s")
+
+    typer.echo("💡 To stop it, run 'devdb stop'")
+
+
 __version__ = "0.1.0"
 
 app = typer.Typer(help="DevDB - Instant Isolated Postgres Test Databases")
@@ -148,12 +183,7 @@ def start(
             print(f"⚠️  Forcing restart: stopping and removing {container_name}")
             cleanup_container(container_name)
         else:
-            print("✅ DevDB is already running for this project")
-            print(f"   Container: {container_name}")
-            print(f"   Port: {info['port']}")
-            print(f"   Status: {info['state']}")
-            print(f"   Project directory: {Path.cwd()}")
-            print("💡 To restart, run 'devdb stop' first, or use 'devdb start --force'")
+            _print_container_info(info)
             raise typer.Exit(code=0)
 
     if info and info["state"] != "running":
@@ -376,25 +406,12 @@ def status():
     info = get_container_info(container_name)
 
     if info is None:
-        print("❌ No DevDB container found for the current directory!")
-        print(f"   Current directory: {Path.cwd()}")
-        print("💡 Run 'devdb start' to start a new container in this directory.")
-
+        _print_no_container_error()
         raise typer.Exit(code=1)
 
-    if info["state"] != "running":
-        print(
-            f"⚠️  Container: {container_name} is not running (status: {info['state']})"
-        )
-        print(f"   Current directory: {Path.cwd()}")
-        raise typer.Exit(code=1)
-
-    print(f"✅ Container {container_name} is running")
-    print(f"   Port: {info['port']}")
-    print(f"   Status: {info['state']}")
-    print(f"   Created at: {info['created_at']}")
-    print(f"   Project directory: {Path.cwd()}")
-    print("💡 To stop it, run 'devdb stop'")
+    config = load_config()
+    ttl = config.get("ttl_seconds", 300)
+    _print_container_info(info, include_ttl=True, ttl=ttl)
 
 
 @app.command()
@@ -404,9 +421,7 @@ def stop():
     container_name = get_container_name()
 
     if not container_exists(container_name):
-        print("❌ No DevDB container found for the current directory!")
-        print(f"   Current directory: {Path.cwd()}")
-        print("💡 Run 'devdb start' to start a new container in this directory.")
+        _print_no_container_error()
         raise typer.Exit(code=1)
 
     if cleanup_container(container_name):

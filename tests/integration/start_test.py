@@ -7,6 +7,8 @@ import psycopg2
 import pytest
 from conftest import devdb_cmd, exec_psql, run_docker
 
+from devdb.container import get_container_name
+
 
 def test_devdb_start_and_connect(devdb_start):
     """
@@ -66,8 +68,6 @@ def test_devdb_ttl_cleanup(test_project_dir):
     config_path = test_project_dir / "devdb.yaml"
     config_path.write_text("ttl_seconds: 3")
 
-    from devdb.container import get_container_name
-
     container_name = get_container_name()
 
     env = os.environ.copy()
@@ -81,7 +81,8 @@ def test_devdb_ttl_cleanup(test_project_dir):
     )
 
     try:
-        time.sleep(10)
+        proc.wait(timeout=10)
+
         result = run_docker("ps", "-a", "--filter", f"name={container_name}")
         assert container_name not in result.stdout
 
