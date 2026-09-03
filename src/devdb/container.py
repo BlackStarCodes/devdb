@@ -9,6 +9,7 @@ from pathlib import Path
 
 import portalocker
 import psycopg2
+import typer
 
 
 def generate_random_string(length=8) -> str:
@@ -31,7 +32,10 @@ def _run_docker(*args: str, **kwargs) -> subprocess.CompletedProcess:
 
 
 def cleanup_container(container_name: str) -> bool:
-    """Stop and remove the container if it exists. Idempotent – safe to call multiple times."""
+    """
+    Stop and remove the container if it exists. Idempotent – safe to call multiple times.
+    Raises RuntimeError if the container exists but cannot be removed.
+    """
     if not container_name:
         return True
 
@@ -40,7 +44,7 @@ def cleanup_container(container_name: str) -> bool:
     if inspect.returncode != 0:
         return True
 
-    print(f"\n🧹 Cleaning up container: {container_name}")
+    typer.echo(f"\n🧹 Cleaning up container: {container_name}")
     _run_docker("stop", container_name)
     rm = _run_docker("rm", "-f", container_name)
 
@@ -51,10 +55,10 @@ def cleanup_container(container_name: str) -> bool:
             # It's already gone – success
             return True
         # Otherwise, it's a genuine failure
-        print("❌ Failed to clean up container!")
+        typer.echo("❌ Failed to clean up container!")
         raise RuntimeError("Docker cleanup failed")
 
-    print(f"✅ Container removed: {container_name}")
+    typer.echo(f"✅ Container removed: {container_name}")
     return True
 
 
@@ -66,7 +70,7 @@ def _force_remove_container(container_name: str) -> None:
 def _wait_for_postgres_ready(container_name: str, db_user: str, db_name: str) -> None:
     """Wait for pg_isready to succeed (up to 30 attempts). Returns None on success, raises on timeout."""
 
-    print("⏳ Waiting for Postgres to be ready...")
+    typer.echo("⏳ Waiting for Postgres to be ready...")
     for _ in range(30):
         check_cmd = [
             "exec",
@@ -84,7 +88,7 @@ def _wait_for_postgres_ready(container_name: str, db_user: str, db_name: str) ->
         check_result = _run_docker(*check_cmd)
 
         if "accepting connections" in check_result.stdout:
-            print("✅ Your test database is ready!")
+            typer.echo("✅ Your test database is ready!")
             return
         time.sleep(1)
 
@@ -118,7 +122,7 @@ def _verify_host_connectivity(
 
     # This check prevents flaky CI failures where the container is internally ready
     # but the host port hasn't propagated yet.
-    print("❌ Host connectivity test failed.")
+    typer.echo("❌ Host connectivity test failed.")
     cleanup_container(container_name)
     raise RuntimeError(
         f"Host could not connect to Postgres on port {host_port} after 5 attempts."
@@ -135,7 +139,7 @@ def _run_container(
     container_name: str, db_name: str, db_user: str, db_password: str, ttl: int
 ) -> tuple[str, float]:
     """
-    Run the Postgres container.
+    Run the Postgres container. Raises RuntimeError if `docker run` fails.
     Returns:
         tuple: (container_id, deadline_timestamp)
     """
@@ -155,24 +159,25 @@ def _run_container(
         "postgres:15-alpine",
     ]
 
-    print(f"🐳 Starting Postgres container: {container_name}")
+    typer.echo(f"🐳 Starting Postgres container: {container_name}")
     result = _run_docker(*docker_cmd)
     start_time = time.time()
     deadline = start_time + ttl
 
     if result.returncode != 0:
-        print("❌ Failed to start container:")
-        print(result.stderr)
+        typer.echo("❌ Failed to start container:")
+        typer.echo(result.stderr)
         raise RuntimeError("Docker run failed")
 
     container_id = result.stdout.strip()
-    print(f"\n✅ Container started with id: {container_id[:12]}")
+    typer.echo(f"\n✅ Container started with id: {container_id[:12]}")
     return container_id, deadline
 
 
-def create_postgres_container(ttl) -> tuple[str, float, str]:
+def create_postgres_container(ttl: int) -> tuple[str, float, str]:
     """
     Spin up a Postgres container and return the connection string, deadline, and name.
+    Raises ValueError if ttl <= 0; raises RuntimeError on Docker or connectivity failures.
     Args:
         ttl: Time-to-live in seconds (counted from the moment `docker run` is called).
     Returns:
@@ -195,7 +200,7 @@ def create_postgres_container(ttl) -> tuple[str, float, str]:
 
         host_port = get_container_port(container_name)
         if host_port is None:
-            print("❌ Could not determine host port.")
+            typer.echo("❌ Could not determine host port.")
             cleanup_container(container_name)
             raise RuntimeError("Could not determine host port")
 
@@ -206,7 +211,7 @@ def create_postgres_container(ttl) -> tuple[str, float, str]:
         conn_string = (
             f"postgresql://{db_user}:{db_password}@127.0.0.1:{host_port}/{db_name}"
         )
-        print(f"\nThis container will auto-cleanup in {ttl} seconds.")
+        typer.echo(f"\nThis container will auto-cleanup in {ttl} seconds.")
 
         atexit.register(functools.partial(cleanup_container, container_name))
         return conn_string, deadline, container_name
