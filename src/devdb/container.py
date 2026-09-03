@@ -126,6 +126,7 @@ def _verify_host_connectivity(
     cleanup_container(container_name)
     raise RuntimeError(
         f"Host could not connect to Postgres on port {host_port} after 5 attempts."
+        "Please check Docker networking or restart the Docker daemon."
     )
 
 

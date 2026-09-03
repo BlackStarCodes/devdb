@@ -181,7 +181,11 @@ def start(
     if info and info["state"] == "running":
         if force:
             typer.echo(f"⚠️  Forcing restart: stopping and removing {container_name}")
-            cleanup_container(container_name)
+            try:
+                cleanup_container(container_name)
+            except RuntimeError as e:
+                typer.echo(f"❌ Failed to remove container: {e}")
+                raise typer.Exit(code=1)
         else:
             _print_container_info(info)
             raise typer.Exit(code=0)
@@ -210,7 +214,11 @@ def start(
     # --- 4. Wait for TTL or interruption ---
     shutdown_reason = "TTL expired"
     try:
-        time.sleep(remaining)
+        if remaining > 0:
+            time.sleep(remaining)
+        else:
+            typer.echo("⚠️ TTL already expired, cleaning up immediately...")
+
     except KeyboardInterrupt:
         typer.echo("\n🛑 Interrupted by user. Cleaning up...")
         shutdown_reason = "interrupted by user"
@@ -357,7 +365,12 @@ def test(
             cleanup_container(container_name)
             raise typer.Exit(code=1)
 
+    try:
         _apply_migration(container_name, migration_file)
+
+    except RuntimeError as e:
+        typer.echo(f"❌ Migration failed: {e}")
+        raise typer.Exit(code=1)
 
     # 3. Prepare env and run command
     env = os.environ.copy()
@@ -424,11 +437,15 @@ def stop():
         _print_no_container_error()
         raise typer.Exit(code=1)
 
-    if cleanup_container(container_name):
-        typer.echo(f"✅ Stopped and removed {container_name}")
-        raise typer.Exit(code=0)
-    else:
-        typer.echo(f"❌ Failed to stop container: {container_name}")
+    try:
+        if cleanup_container(container_name):
+            typer.echo(f"✅ Stopped and removed {container_name}")
+            raise typer.Exit(code=0)
+        else:
+            typer.echo(f"❌ Failed to stop container: {container_name}")
+            raise typer.Exit(code=1)
+    except RuntimeError as e:
+        typer.echo(f"❌ Cleanup failed: {e}")
         raise typer.Exit(code=1)
 
 

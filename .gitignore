@@ -31,3 +31,11 @@ devdb.yaml
 
 # OS
 .DS_Store
+
+# Test coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Pytest cache
+.pytest_cache/
