@@ -144,6 +144,16 @@ def _print_container_info(info: dict, include_ttl: bool = False, ttl: int = 0) -
     typer.echo("💡 To stop it, run 'devdb stop'")
 
 
+def _safe_cleanup(container_name: str) -> bool:
+    """Attempt to remove container; prints error, returns True on success and False on failure."""
+    try:
+        cleanup_container(container_name)
+        return True
+    except RuntimeError as e:
+        typer.echo(f"❌ Cleanup failed: {e}")
+        return False
+
+
 __version__ = "0.1.0"
 
 app = typer.Typer(help="DevDB - Instant Isolated Postgres Test Databases")
@@ -181,10 +191,7 @@ def start(
     if info and info["state"] == "running":
         if force:
             typer.echo(f"⚠️  Forcing restart: stopping and removing {container_name}")
-            try:
-                cleanup_container(container_name)
-            except RuntimeError as e:
-                typer.echo(f"❌ Failed to remove container: {e}")
+            if not _safe_cleanup(container_name):
                 raise typer.Exit(code=1)
         else:
             _print_container_info(info)
@@ -224,12 +231,10 @@ def start(
         shutdown_reason = "interrupted by user"
 
     # --- 5. Single cleanup block ---
-    try:
-        cleanup_container(container_name)
+    if _safe_cleanup(container_name):
         typer.echo(f"\n✅ DevDB shutdown complete ({shutdown_reason}).")
         sys.exit(0)
-    except RuntimeError:
-        typer.echo("❌ Cleanup failed!")
+    else:
         sys.exit(1)
 
 
@@ -362,15 +367,15 @@ def test(
         migration_file = Path(migrations_path).expanduser().resolve()
         if not migration_file.exists():
             typer.echo(f"❌ Migration file not found: {migration_file}")
-            cleanup_container(container_name)
+            _safe_cleanup(container_name)
             raise typer.Exit(code=1)
 
-    try:
-        _apply_migration(container_name, migration_file)
-
-    except RuntimeError as e:
-        typer.echo(f"❌ Migration failed: {e}")
-        raise typer.Exit(code=1)
+        try:
+            _apply_migration(container_name, migration_file)
+        except RuntimeError as e:
+            typer.echo(f"❌ Migration failed: {e}")
+            _safe_cleanup(container_name)
+            raise typer.Exit(code=1)
 
     # 3. Prepare env and run command
     env = os.environ.copy()
@@ -381,8 +386,9 @@ def test(
     cmd0 = shutil.which(command[0])
     if cmd0 is None:
         typer.echo(f"❌ Command not found: {command[0]}")
-        cleanup_container(container_name)
+        _safe_cleanup(container_name)
         raise typer.Exit(code=1)
+
     resolved_command = [cmd0] + command[1:]
 
     child_proc = subprocess.Popen(
@@ -399,10 +405,11 @@ def test(
         typer.echo("\n🛑 Interrupted by the user. Cleaning up...")
         child_proc.terminate()
         child_proc.wait()
-        cleanup_container(container_name)
+        _safe_cleanup(container_name)
         raise typer.Exit(code=130)
 
-    cleanup_container(container_name)
+    if not _safe_cleanup(container_name):
+        returncode = 1
 
     if returncode != 0:
         typer.echo(f"❌ Command exited with code: {returncode}")
@@ -437,15 +444,11 @@ def stop():
         _print_no_container_error()
         raise typer.Exit(code=1)
 
-    try:
-        if cleanup_container(container_name):
-            typer.echo(f"✅ Stopped and removed {container_name}")
-            raise typer.Exit(code=0)
-        else:
-            typer.echo(f"❌ Failed to stop container: {container_name}")
-            raise typer.Exit(code=1)
-    except RuntimeError as e:
-        typer.echo(f"❌ Cleanup failed: {e}")
+    if _safe_cleanup(container_name):
+        typer.echo(f"✅ Stopped and removed {container_name}")
+        raise typer.Exit(code=0)
+    else:
+        typer.echo(f"❌ Failed to stop container: {container_name}")
         raise typer.Exit(code=1)
 
 

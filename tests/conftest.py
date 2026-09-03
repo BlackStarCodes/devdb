@@ -113,7 +113,7 @@ def devdb_start(test_project_dir):
 
         # Force remove the container
         if container_name:
-            run_docker("rm", "-f", container_name)
+            run_docker("rm", "-f", "-v", container_name)
 
 
 def devdb_cmd(*args: str) -> list[str]:

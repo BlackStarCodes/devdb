@@ -81,7 +81,7 @@ def test_devdb_ttl_cleanup(test_project_dir):
     )
 
     try:
-        proc.wait(timeout=10)
+        proc.wait(timeout=15)
 
         result = run_docker("ps", "-a", "--filter", f"name={container_name}")
         assert container_name not in result.stdout

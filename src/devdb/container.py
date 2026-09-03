@@ -33,7 +33,8 @@ def _run_docker(*args: str, **kwargs) -> subprocess.CompletedProcess:
 
 def cleanup_container(container_name: str) -> bool:
     """
-    Stop and remove the container if it exists. Idempotent – safe to call multiple times.
+    Stop and remove the container if it exists, including any associated
+    anonymous volumes. Idempotent – safe to call multiple times.
     Raises RuntimeError if the container exists but cannot be removed.
     """
     if not container_name:
@@ -46,7 +47,7 @@ def cleanup_container(container_name: str) -> bool:
 
     typer.echo(f"\n🧹 Cleaning up container: {container_name}")
     _run_docker("stop", container_name)
-    rm = _run_docker("rm", "-f", container_name)
+    rm = _run_docker("rm", "-f", "-v", container_name)
 
     if rm.returncode != 0:
         # If rm fails, check if it's because the container is already gone
@@ -63,8 +64,9 @@ def cleanup_container(container_name: str) -> bool:
 
 
 def _force_remove_container(container_name: str) -> None:
-    """Force‑remove any existing container with the given name. Idempotent; does nothing if it doesn't exist."""
-    _run_docker("rm", "-f", container_name)
+    """Force‑remove any existing container with the given name, including
+    associated anonymous volumes. Idempotent; does nothing if it doesn't exist."""
+    _run_docker("rm", "-f", "-v", container_name)
 
 
 def _wait_for_postgres_ready(container_name: str, db_user: str, db_name: str) -> None:
