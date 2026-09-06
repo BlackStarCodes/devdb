@@ -158,7 +158,7 @@ def _run_container(
         "-e",
         f"POSTGRES_PASSWORD={db_password}",
         "-p",
-        "5432",
+        "127.0.0.1::5432",
         "postgres:15-alpine",
     ]
 

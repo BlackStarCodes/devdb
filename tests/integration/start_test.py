@@ -96,3 +96,39 @@ def test_devdb_ttl_cleanup(test_project_dir):
                 proc.wait()
 
         run_docker("rm", "-f", container_name)
+
+
+def test_concurrent_start_lock(test_project_dir):
+    """
+    Prove that portalocker prevents two simultaneous `devdb start` processes
+    in the same directory from corrupting each other.
+    """
+
+    config_path = test_project_dir / "devdb.yaml"
+    config_path.write_text("ttl_seconds: 5")
+
+    proc1 = subprocess.Popen(
+        devdb_cmd("start"), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+
+    proc2 = subprocess.Popen(
+        devdb_cmd("start"), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+
+    time.sleep(5)
+
+    proc1.terminate()
+    proc2.terminate()
+    proc1.wait(timeout=5)
+    proc2.wait(timeout=5)
+
+    stderr1 = proc1.stderr.read() if proc1.stderr else ""
+    stderr2 = proc2.stderr.read() if proc2.stderr else ""
+
+    assert "Conflict" not in stderr1 + stderr2
+    assert "already in use" not in stderr1 + stderr2
+
+    container_name = get_container_name()
+    result = run_docker("ps", "-a", "--filter", f"name={container_name}")
+
+    assert container_name in result.stdout
