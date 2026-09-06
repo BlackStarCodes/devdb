@@ -22,7 +22,7 @@ It's recommended to install DevDB in a virtual environment for your project (e.g
 
 ```bash
 # Install DevDB
-pip install devdb
+pip install devdb-cli
 
 # Start a fresh database in your project
 cd your-project

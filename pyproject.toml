@@ -1,5 +1,5 @@
 [project]
-name = "devdb"
+name = "devdb-cli"
 version = "0.2.0"
 description = "Instant isolated Postgres test databases for developers"
 readme = "README.md"
