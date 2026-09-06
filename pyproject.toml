@@ -1,6 +1,6 @@
 [project]
 name = "devdb"
-version = "0.1.0"
+version = "0.2.0"
 description = "Instant isolated Postgres test databases for developers"
 readme = "README.md"
 authors = [
@@ -19,7 +19,10 @@ devdb = "devdb.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
-build-backend = "uv_build"
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/devdb"]
 
 [dependency-groups]
 dev = [
