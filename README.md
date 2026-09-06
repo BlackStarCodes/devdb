@@ -1,7 +1,7 @@
 # DevDB – Fresh Postgres in One Command
 
 [![CI](https://github.com/BlackStarCodes/devdb/actions/workflows/ci.yml/badge.svg)](https://github.com/BlackStarCodes/devdb/actions/workflows/ci.yml)
-[![PyPI version](https://badge.fury.io/py/devdb.svg)](https://badge.fury.io/py/devdb)
+[![PyPI version](https://badge.fury.io/py/devdb-cli.svg)](https://badge.fury.io/py/devdb-cli)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
 **One command. Fresh Postgres. Auto‑cleanup.**
@@ -22,12 +22,12 @@ It's recommended to install DevDB in a virtual environment for your project (e.g
 
 ```bash
 # Install DevDB
-pip install devdb-cli
+$ pip install devdb-cli
 
 # Start a fresh database in your project
-cd your-project
-devdb init
-devdb start
+$ cd your-project
+$ devdb init
+$ devdb start
 ```
 
 You'll get a `DATABASE_URL` in about 3-5 seconds. The container automatically cleans up after the TTL (default 300 seconds) or when you hit `Ctrl+C`.
